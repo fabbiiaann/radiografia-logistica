@@ -4,3 +4,5 @@ numpy
 pgeocode
 pydeck
 openpyxl
+plotly
+xlsxwriter
