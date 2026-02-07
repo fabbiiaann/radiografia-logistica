@@ -296,17 +296,44 @@ with tab2:
             fig_bar_h = px.bar(df_tipo, x='Cantidad', y='Tipo', orientation='h', text='Cantidad', color='Tipo', color_discrete_sequence=px.colors.sequential.Reds_r)
             st.plotly_chart(fig_bar_h, use_container_width=True)
         with c2:
-            st.markdown("### 📈 Pareto (80/20)")
-            # === CÓDIGO NUEVO PARETO ===
+            st.markdown("### 📈 Pareto (80/20) - Zonas")
+            
+            # --- CÓDIGO PARETO (TU VERSIÓN EXACTA) ---
             # Agrupar por CP Destino en incidencias
             incidencias_cp = df_inc.groupby('CP Dest.').size().sort_values(ascending=False).head(10)
-            porcentaje_acum = (incidencias_cp.cumsum() / incidencias_cp.sum() * 100)
-            
+
+            # CORRECCIÓN: Calcular el porcentaje acumulado DESPUÉS de ordenar
+            porcentaje_acum = (incidencias_cp.cumsum() / incidencias_cp.sum()) * 100
+
             # Gráfico combinado
             fig = make_subplots(specs=[[{"secondary_y": True}]])
-            fig.add_trace(go.Bar(x=incidencias_cp.index.astype(str), y=incidencias_cp.values, name="Incidencias", marker_color=COLOR_CORPORATIVO), secondary_y=False)
-            fig.add_trace(go.Scatter(x=incidencias_cp.index.astype(str), y=porcentaje_acum.values, name="% Acumulado", mode='lines+markers', marker_color="red"), secondary_y=True)
+            fig.add_trace(
+                go.Bar(
+                    x=incidencias_cp.index.astype(str), 
+                    y=incidencias_cp.values, 
+                    name="Incidencias", 
+                    marker_color=COLOR_CORPORATIVO
+                ), 
+                secondary_y=False
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=incidencias_cp.index.astype(str), 
+                    y=porcentaje_acum.values, 
+                    name="% Acumulado", 
+                    mode='lines+markers', 
+                    marker_color="red"
+                ), 
+                secondary_y=True
+            )
             fig.add_hline(y=80, line_dash="dash", line_color="red", secondary_y=True)
+
+            # MEJORA ADICIONAL: Configurar ejes correctamente
+            fig.update_yaxes(title_text="Número de Incidencias", secondary_y=False)
+            fig.update_yaxes(title_text="% Acumulado", range=[0, 100], secondary_y=True)
+            fig.update_xaxes(title_text="Código Postal Destino")
+            fig.update_layout(title="Diagrama de Pareto - Incidencias por CP Destino")
+
             st.plotly_chart(fig, use_container_width=True)
         
         st.divider()
