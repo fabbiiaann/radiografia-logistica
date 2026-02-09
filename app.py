@@ -58,6 +58,19 @@ def limpiar_servicio(val):
     if "24" in texto: return "24H"
     return texto
 
+# --- SISTEMA DE EVALUACIÓN (SCORING) ---
+def calcular_score(otd, tasa_inc):
+    score = 0
+    if otd >= 95: score += 2.0
+    elif otd >= 90: score += 1.5
+    else: score += 1.0
+    
+    if tasa_inc < 3: score += 2.0
+    elif tasa_inc < 5: score += 1.5
+    else: score += 1.0
+    
+    return (score / 4) * 10
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2830/2830312.png", width=50)
@@ -191,6 +204,10 @@ total_exp = len(df_filtered)
 total_inc = len(df_inc)
 otd_rate = ((total_exp - total_inc) / total_exp) * 100
 total_coste = df_filtered['Impacto €'].sum()
+tasa_inc_rate = (total_inc / total_exp) * 100 if total_exp > 0 else 0
+
+# SCORE
+logistics_score = calcular_score(otd_rate, tasa_inc_rate)
 
 # TIEMPO PROMEDIO
 if not df_inc.empty:
@@ -214,7 +231,7 @@ monthly_metrics['Mes'] = monthly_metrics['Mes'].astype(str)
 
 # --- INTERFAZ ---
 st.markdown(f'<p class="big-font">Radiografía Logística: Informe Ejecutivo</p>', unsafe_allow_html=True)
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Visión General", "🧠 Análisis Pareto & Causa", "💰 Impacto Económico", "📂 Datos Incidencias"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Visión General", "🧠 Zonas Problemáticas", "💰 Impacto Económico", "📂 Datos Incidencias"])
 
 # === TAB 1: VISIÓN GENERAL ===
 with tab1:
@@ -222,18 +239,15 @@ with tab1:
     c1.markdown(f"""<div class="kpi-card"><div class="kpi-title">Envíos</div><div class="kpi-value">{total_exp}</div></div>""", unsafe_allow_html=True)
     c2.markdown(f"""<div class="kpi-card"><div class="kpi-title">Incidencias</div><div class="kpi-value" style="color: #d32f2f">{total_inc}</div></div>""", unsafe_allow_html=True)
     c3.markdown(f"""<div class="kpi-card"><div class="kpi-title">OTD (Calidad)</div><div class="kpi-value">{otd_rate:.1f}%</div></div>""", unsafe_allow_html=True)
-    c4.markdown(f"""<div class="kpi-card"><div class="kpi-title">Tiempo Medio Inc.</div><div class="kpi-value">{avg_delay:.1f} días</div></div>""", unsafe_allow_html=True)
+    c4.markdown(f"""<div class="kpi-card"><div class="kpi-title">Scoring Calidad</div><div class="kpi-value">{logistics_score:.1f}/10</div></div>""", unsafe_allow_html=True)
     c5.markdown(f"""<div class="kpi-card" style="border-left: 5px solid #ff9800"><div class="kpi-title">Coste Estimado</div><div class="kpi-value" style="color: #ef6c00">{total_coste:,.0f}€</div></div>""", unsafe_allow_html=True)
     
     st.divider()
     col_izq, col_der = st.columns([1, 2])
     
     with col_izq:
-        # === VELOCÍMETRO ===
         st.markdown("**Tasa Global de Incidencias**")
-        tasa_inc = (total_inc/total_exp)*100 if total_exp > 0 else 0
         MAX_VAL = 24
-        
         colors = ["#2E7D32", "#4CAF50", "#8BC34A", "#CDDC39", "#FFEB3B", "#FFC107", "#FF9800", "#FF5722", "#F44336", "#B71C1C"]
         steps_list = []
         step_size = MAX_VAL / len(colors)
@@ -241,7 +255,7 @@ with tab1:
             steps_list.append({'range': [i*step_size, (i+1)*step_size], 'color': color})
 
         fig_gauge = go.Figure(go.Indicator(
-            mode = "gauge", value = tasa_inc,
+            mode = "gauge", value = tasa_inc_rate,
             number = {'font': {'size': 1, 'color': "rgba(0,0,0,0)"}}, 
             gauge = {
                 'axis': {'range': [0, MAX_VAL], 'tickwidth': 1, 'tickcolor': 'gray'}, 
@@ -249,8 +263,7 @@ with tab1:
                 'bgcolor': "white", 'borderwidth': 0, 'steps': steps_list,
             }
         ))
-        
-        angle = 180 - (tasa_inc / MAX_VAL) * 180
+        angle = 180 - (tasa_inc_rate / MAX_VAL) * 180
         theta = math.radians(angle)
         r = 0.45 
         x_head, y_head = 0.5 + r * math.cos(theta), 0.25 + r * math.sin(theta)
@@ -261,7 +274,7 @@ with tab1:
         
         fig_gauge.add_shape(type="path", path=path, fillcolor="black", line_color="black")
         fig_gauge.add_shape(type="circle", x0=0.48, y0=0.23, x1=0.52, y1=0.27, fillcolor="#333", line_color="#333")
-        fig_gauge.add_annotation(x=0.5, y=0.05, text=f"{tasa_inc:.2f}%", showarrow=False, font=dict(size=40, color=COLOR_CORPORATIVO, family="Arial Black"))
+        fig_gauge.add_annotation(x=0.5, y=0.05, text=f"{tasa_inc_rate:.2f}%", showarrow=False, font=dict(size=40, color=COLOR_CORPORATIVO, family="Arial Black"))
         fig_gauge.add_annotation(x=0.5, y=0.75, ax=0, ay=-40, text="Media Sector (12%)", showarrow=True, arrowhead=2, font=dict(size=12, color="black"))
         fig_gauge.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=0))
         st.plotly_chart(fig_gauge, use_container_width=True)
@@ -288,70 +301,31 @@ with tab1:
 # === TAB 2: ANÁLISIS ===
 with tab2:
     if not df_inc.empty:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("### 📊 Gravedad")
-            df_tipo = df_inc['Tipo Incidencia'].value_counts().reset_index()
-            df_tipo.columns = ['Tipo', 'Cantidad']
-            fig_bar_h = px.bar(df_tipo, x='Cantidad', y='Tipo', orientation='h', text='Cantidad', color='Tipo', color_discrete_sequence=px.colors.sequential.Reds_r)
-            st.plotly_chart(fig_bar_h, use_container_width=True)
-        with c2:
-            st.markdown("### 📈 Pareto (80/20) - Zonas")
-            
-            # --- CÓDIGO PARETO (TU VERSIÓN EXACTA) ---
-            # Agrupar por CP Destino en incidencias
-            incidencias_cp = df_inc.groupby('CP Dest.').size().sort_values(ascending=False).head(10)
-
-            # CORRECCIÓN: Calcular el porcentaje acumulado DESPUÉS de ordenar
-            porcentaje_acum = (incidencias_cp.cumsum() / incidencias_cp.sum()) * 100
-
-            # Gráfico combinado
-            fig = make_subplots(specs=[[{"secondary_y": True}]])
-            fig.add_trace(
-                go.Bar(
-                    x=incidencias_cp.index.astype(str), 
-                    y=incidencias_cp.values, 
-                    name="Incidencias", 
-                    marker_color=COLOR_CORPORATIVO
-                ), 
-                secondary_y=False
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=incidencias_cp.index.astype(str), 
-                    y=porcentaje_acum.values, 
-                    name="% Acumulado", 
-                    mode='lines+markers', 
-                    marker_color="red"
-                ), 
-                secondary_y=True
-            )
-            fig.add_hline(y=80, line_dash="dash", line_color="red", secondary_y=True)
-
-            # MEJORA ADICIONAL: Configurar ejes correctamente
-            fig.update_yaxes(title_text="Número de Incidencias", secondary_y=False)
-            fig.update_yaxes(title_text="% Acumulado", range=[0, 100], secondary_y=True)
-            fig.update_xaxes(title_text="Código Postal Destino")
-            fig.update_layout(title="Diagrama de Pareto - Incidencias por CP Destino")
-
-            st.plotly_chart(fig, use_container_width=True)
+        col_tabla, col_mapa = st.columns([1, 2])
         
-        st.divider()
-        try:
-            st.markdown("### 🌍 Mapa de Incidencias")
-            df_inc['CP_Clean'] = df_inc['CP Dest.'].astype(str).str.split('.').str[0].str.strip().str.zfill(5)
-            nomi = pgeocode.Nominatim('es')
-            geo = nomi.query_postal_code(df_inc['CP_Clean'].tolist())
-            df_inc['lat'] = geo['latitude'].values
-            df_inc['lon'] = geo['longitude'].values
-            map_data = df_inc.dropna(subset=['lat', 'lon'])
-            if not map_data.empty:
-                layer = pdk.Layer("HeatmapLayer", data=map_data, get_position=["lon", "lat"], opacity=0.8, get_weight=1, radiusPixels=40, intensity=1.5)
-                view = pdk.ViewState(latitude=40.4167, longitude=-3.7033, zoom=5)
-                st.pydeck_chart(pdk.Deck(map_style='light', initial_view_state=view, layers=[layer]))
-        except: pass
+        with col_tabla:
+            st.markdown("### ⚠️ Destinos Problemáticos")
+            df_inc['CP_Clean'] = df_inc['CP Dest.'].astype(str).str.split('.').str[0].str.strip()
+            top_cps = df_inc['CP_Clean'].value_counts().head(10).reset_index()
+            top_cps.columns = ['Código Postal', 'Incidencias']
+            st.dataframe(top_cps, hide_index=True, use_container_width=True)
+            
+        with col_mapa:
+            st.markdown("### 🌍 Mapa de Calor")
+            try:
+                df_inc['CP_Clean_Map'] = df_inc['CP Dest.'].astype(str).str.split('.').str[0].str.strip().str.zfill(5)
+                nomi = pgeocode.Nominatim('es')
+                geo = nomi.query_postal_code(df_inc['CP_Clean_Map'].tolist())
+                df_inc['lat'] = geo['latitude'].values
+                df_inc['lon'] = geo['longitude'].values
+                map_data = df_inc.dropna(subset=['lat', 'lon'])
+                if not map_data.empty:
+                    layer = pdk.Layer("HeatmapLayer", data=map_data, get_position=["lon", "lat"], opacity=0.8, get_weight=1, radiusPixels=40, intensity=1.5)
+                    view = pdk.ViewState(latitude=40.4167, longitude=-3.7033, zoom=5)
+                    st.pydeck_chart(pdk.Deck(map_style='light', initial_view_state=view, layers=[layer]), use_container_width=True)
+            except: st.write("Mapa no disponible")
 
-# === TAB 3: ECONÓMICO ===
+# === TAB 3: ECONÓMICO (GRAVEDAD + COSTES) ===
 with tab3:
     st.markdown("### 💸 Proyección Económica")
     coste_proyectado_anual = total_inc * avg_delay * coste_penalizacion
@@ -362,9 +336,22 @@ with tab3:
     c3.metric("Proyección Anual", f"{coste_proyectado_anual:,.0f}€")
     
     st.divider()
-    coste_por_tipo = df_inc.groupby('Tipo Incidencia')['Impacto €'].sum().reset_index()
-    fig_pie = px.pie(coste_por_tipo, values='Impacto €', names='Tipo Incidencia', hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
-    st.plotly_chart(fig_pie, use_container_width=True)
+    
+    # === AQUI HEMOS MOVIDO EL GRÁFICO DE GRAVEDAD ===
+    col_grav, col_pie = st.columns(2)
+    
+    with col_grav:
+        st.markdown("### 📊 Frecuencia por Gravedad")
+        df_tipo = df_inc['Tipo Incidencia'].value_counts().reset_index()
+        df_tipo.columns = ['Tipo', 'Cantidad']
+        fig_bar_h = px.bar(df_tipo, x='Cantidad', y='Tipo', orientation='h', text='Cantidad', color='Tipo', color_discrete_sequence=px.colors.sequential.Reds_r)
+        st.plotly_chart(fig_bar_h, use_container_width=True)
+        
+    with col_pie:
+        st.markdown("### 💰 Coste por Tipo")
+        coste_por_tipo = df_inc.groupby('Tipo Incidencia')['Impacto €'].sum().reset_index()
+        fig_pie = px.pie(coste_por_tipo, values='Impacto €', names='Tipo Incidencia', hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
+        st.plotly_chart(fig_pie, use_container_width=True)
 
 # === TAB 4: DATOS (SOLO INCIDENCIAS) ===
 with tab4:
