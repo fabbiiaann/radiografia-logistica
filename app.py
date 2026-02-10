@@ -9,6 +9,16 @@ from plotly.subplots import make_subplots
 import io
 import time
 import math 
+import os
+
+# --- INTENTO DE INSTALACIÓN AUTOMÁTICA DE LIBRERÍAS (SI FALTAN) ---
+try:
+    import holidays
+    import openpyxl
+except ImportError:
+    st.warning("⚙️ Instalando librerías necesarias para festivos... Espera unos segundos y la app se reiniciará.")
+    os.system('pip install holidays openpyxl')
+    st.rerun()
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Radiografía Logística PRO", layout="wide", page_icon="🚀")
@@ -71,7 +81,7 @@ def calcular_score(otd, tasa_inc):
     
     return (score / 4) * 10
 
-# --- SIDEBAR ---
+# --- SIDEBAR (CON BOTÓN GENERADOR) ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2830/2830312.png", width=50)
     st.title("Control de Mando")
@@ -94,13 +104,76 @@ with st.sidebar:
     coste_gestion = st.number_input("Coste Gestión Incidencia (€)", value=25, step=5)
     coste_perdida = st.number_input("Pérdida por Cliente Crítico (€)", value=500, step=50)
 
+    # --- AQUÍ ESTÁ EL NUEVO BOTÓN GENERADOR ---
+    st.divider()
+    st.markdown("### 🛠️ Herramientas Admin")
+    
+    if st.button("📥 Generar Excel Festivos (2020-2025)"):
+        with st.spinner("Generando base de datos masiva..."):
+            import holidays
+            
+            years = [2020, 2021, 2022, 2023, 2024, 2025]
+            mapa_cp_comunidades = {
+                'AN': ['04', '11', '14', '18', '21', '23', '29', '41'], # Andalucía
+                'AR': ['22', '44', '50'], # Aragón
+                'AS': ['33'], # Asturias
+                'CB': ['39'], # Cantabria
+                'CE': ['51'], # Ceuta
+                'CL': ['05', '09', '24', '34', '37', '40', '42', '47', '49'], # Castilla y León
+                'CM': ['02', '13', '16', '19', '45'], # Castilla-La Mancha
+                'CN': ['35', '38'], # Canarias
+                'CT': ['08', '17', '25', '43'], # Cataluña
+                'EX': ['06', '10'], # Extremadura
+                'GA': ['15', '27', '32', '36'], # Galicia
+                'IB': ['07'], # Baleares
+                'MC': ['30'], # Murcia
+                'MD': ['28'], # Madrid
+                'ML': ['52'], # Melilla
+                'NC': ['31'], # Navarra
+                'PV': ['01', '20', '48'], # País Vasco
+                'RI': ['26'], # La Rioja
+                'VC': ['03', '12', '46']  # C. Valenciana
+            }
+            
+            data_festivos = []
+            
+            for year in years:
+                for comunidad, prefijos in mapa_cp_comunidades.items():
+                    festivos_comunidad = holidays.ES(years=year, subdiv=comunidad)
+                    for fecha, nombre in festivos_comunidad.items():
+                        fecha_str = fecha.strftime('%Y-%m-%d')
+                        for prefijo in prefijos:
+                            cp_generico = f"{prefijo}xxx" 
+                            data_festivos.append({
+                                'CP': cp_generico,
+                                'Fecha': fecha_str,
+                                'Descripción': f"{nombre}"
+                            })
+            
+            df_gen = pd.DataFrame(data_festivos)
+            df_gen = df_gen.drop_duplicates(subset=['CP', 'Fecha'])
+            df_gen = df_gen.sort_values(by=['Fecha', 'CP'])
+            
+            buffer_excel = io.BytesIO()
+            with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
+                df_gen.to_excel(writer, index=False)
+            
+            st.success(f"¡Listo! {len(df_gen)} festivos encontrados.")
+            st.download_button(
+                label="⬇️ DESCARGAR ARCHIVO AHORA",
+                data=buffer_excel.getvalue(),
+                file_name="festivos_espana_completo_2020_2025.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+
 # --- LÓGICA DE NEGOCIO ---
 df = cargar_desde_drive(ID_EXPEDICIONES, "sheet", st.session_state['last_update'])
 df_locales = cargar_desde_drive(ID_FESTIVOS, "csv", st.session_state['last_update'])
 
 if df is None: st.stop()
 
-# Festivos
+# Festivos Locales (Desde Excel)
 dic_festivos = {}
 dic_parciales = {}
 if df_locales is not None:
@@ -118,7 +191,21 @@ if df_locales is not None:
                 else: dic_festivos[cp_str.zfill(5)] = [f_str]
     except: pass
 
-festivos_nac = ['2025-01-01', '2025-01-06', '2025-04-18', '2025-05-01', '2025-08-15', '2025-11-01', '2025-12-06', '2025-12-08', '2025-12-25']
+# --- FESTIVOS NACIONALES (2020-2025) ---
+festivos_nac = [
+    # 2020
+    '2020-01-01', '2020-01-06', '2020-04-10', '2020-05-01', '2020-08-15', '2020-10-12', '2020-11-01', '2020-12-06', '2020-12-08', '2020-12-25',
+    # 2021
+    '2021-01-01', '2021-01-06', '2021-04-02', '2021-05-01', '2021-08-15', '2021-10-12', '2021-11-01', '2021-12-06', '2021-12-08', '2021-12-25',
+    # 2022
+    '2022-01-01', '2022-01-06', '2022-04-15', '2022-05-01', '2022-08-15', '2022-10-12', '2022-11-01', '2022-12-06', '2022-12-08', '2022-12-25',
+    # 2023
+    '2023-01-01', '2023-01-06', '2023-04-07', '2023-05-01', '2023-08-15', '2023-10-12', '2023-11-01', '2023-12-06', '2023-12-08', '2023-12-25',
+    # 2024
+    '2024-01-01', '2024-01-06', '2024-03-29', '2024-05-01', '2024-08-15', '2024-10-12', '2024-11-01', '2024-12-06', '2024-12-08', '2024-12-25',
+    # 2025
+    '2025-01-01', '2025-01-06', '2025-04-18', '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01', '2025-12-06', '2025-12-08', '2025-12-25'
+]
 
 # Limpieza inicial
 df.columns = df.columns.str.strip()
@@ -231,7 +318,7 @@ monthly_metrics['Mes'] = monthly_metrics['Mes'].astype(str)
 
 # --- INTERFAZ ---
 st.markdown(f'<p class="big-font">Radiografía Logística: Informe Ejecutivo</p>', unsafe_allow_html=True)
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Visión General", "🧠 Zonas Problemáticas", "💰 Impacto Económico", "📂 Datos Incidencias"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Visión General", "🧠 Análisis Pareto & Zonas", "💰 Impacto Económico", "📂 Datos Incidencias"])
 
 # === TAB 1: VISIÓN GENERAL ===
 with tab1:
@@ -298,22 +385,79 @@ with tab1:
         fig_line.update_layout(height=200, margin=dict(t=10, b=10))
         st.plotly_chart(fig_line, use_container_width=True)
 
-# === TAB 2: ANÁLISIS ===
+# === TAB 2: ANÁLISIS (PARETO RE-INSERTADO Y CORREGIDO CP 5 DÍGITOS) ===
 with tab2:
     if not df_inc.empty:
-        col_tabla, col_mapa = st.columns([1, 2])
+        col_pareto, col_mapa = st.columns(2)
         
-        with col_tabla:
-            st.markdown("### ⚠️ Destinos Problemáticos")
-            df_inc['CP_Clean'] = df_inc['CP Dest.'].astype(str).str.split('.').str[0].str.strip()
-            top_cps = df_inc['CP_Clean'].value_counts().head(10).reset_index()
-            top_cps.columns = ['Código Postal', 'Incidencias']
-            st.dataframe(top_cps, hide_index=True, use_container_width=True)
+        with col_pareto:
+            st.markdown("### 📈 Diagrama de Pareto (CP)")
+            
+            # --- LIMPIEZA DE CÓDIGO POSTAL: FORZAR 5 DÍGITOS ---
+            df_inc['CP_Pareto'] = df_inc['CP Dest.'].astype(str).replace(r'\.0$', '', regex=True).str.strip().str.zfill(5)
+            
+            # Datos
+            incidencias_cp = df_inc.groupby('CP_Pareto').size().sort_values(ascending=False).head(10)
+            porcentaje_acum = (incidencias_cp.cumsum() / incidencias_cp.sum()) * 100
+
+            # Gráfico
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+            fig.add_trace(
+                go.Bar(x=incidencias_cp.index.astype(str),
+                        y=incidencias_cp.values,
+                        name="Incidencias",
+                        marker_color=COLOR_CORPORATIVO,
+                        text=incidencias_cp.values,
+                        textposition='outside'),
+                secondary_y=False
+            )
+
+            fig.add_trace(
+                go.Scatter(x=incidencias_cp.index.astype(str),
+                            y=porcentaje_acum.values,
+                            name="% Acumulado",
+                            mode='lines+markers',
+                            marker=dict(color="red", size=8),
+                            line=dict(color="red", width=3)),
+                secondary_y=True
+            )
+
+            fig.add_hline(y=80, line_dash="dash", line_color="green", annotation_text="80%", secondary_y=True)
+
+            fig.update_layout(
+                title="Diagrama de Pareto - Incidencias por CP",
+                xaxis_title="Código Postal",
+                hovermode='x unified',
+                showlegend=True
+            )
+
+            fig.update_yaxes(
+                title_text="Número de Incidencias",
+                secondary_y=False,
+                gridcolor='lightgray'
+            )
+
+            fig.update_yaxes(
+                title_text="% Acumulado",
+                secondary_y=True,
+                range=[0, 100],
+                ticksuffix="%"
+            )
+            
+            fig.update_xaxes(type='category')
+
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Interpretación Automática
+            cps_80 = (porcentaje_acum <= 80).sum()
+            total_cps = len(incidencias_cp)
+            st.info(f"📊 **Interpretación:** **{cps_80}** códigos postales generan el **80%** de las incidencias mostradas.")
             
         with col_mapa:
             st.markdown("### 🌍 Mapa de Calor")
             try:
-                df_inc['CP_Clean_Map'] = df_inc['CP Dest.'].astype(str).str.split('.').str[0].str.strip().str.zfill(5)
+                df_inc['CP_Clean_Map'] = df_inc['CP Dest.'].astype(str).replace(r'\.0$', '', regex=True).str.strip().str.zfill(5)
                 nomi = pgeocode.Nominatim('es')
                 geo = nomi.query_postal_code(df_inc['CP_Clean_Map'].tolist())
                 df_inc['lat'] = geo['latitude'].values
@@ -325,7 +469,7 @@ with tab2:
                     st.pydeck_chart(pdk.Deck(map_style='light', initial_view_state=view, layers=[layer]), use_container_width=True)
             except: st.write("Mapa no disponible")
 
-# === TAB 3: ECONÓMICO (GRAVEDAD + COSTES) ===
+# === TAB 3: ECONÓMICO ===
 with tab3:
     st.markdown("### 💸 Proyección Económica")
     coste_proyectado_anual = total_inc * avg_delay * coste_penalizacion
@@ -337,7 +481,6 @@ with tab3:
     
     st.divider()
     
-    # === AQUI HEMOS MOVIDO EL GRÁFICO DE GRAVEDAD ===
     col_grav, col_pie = st.columns(2)
     
     with col_grav:
