@@ -9,16 +9,6 @@ from plotly.subplots import make_subplots
 import io
 import time
 import math 
-import os
-
-# --- INTENTO DE INSTALACIÓN AUTOMÁTICA DE LIBRERÍAS (SI FALTAN) ---
-try:
-    import holidays
-    import openpyxl
-except ImportError:
-    st.warning("⚙️ Instalando librerías necesarias para festivos... Espera unos segundos y la app se reiniciará.")
-    os.system('pip install holidays openpyxl')
-    st.rerun()
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Radiografía Logística PRO", layout="wide", page_icon="🚀")
@@ -27,6 +17,7 @@ st.set_page_config(page_title="Radiografía Logística PRO", layout="wide", page
 # ⚙️ ZONA DE CONFIGURACIÓN (IDs)
 # ==========================================
 ID_EXPEDICIONES = "12UrhIQqsFbxd-wM6kcI8_a7Hn6vxeoMJ" 
+# ID Original restaurado (ya que has actualizado ese archivo)
 ID_FESTIVOS = "1_fJSLFsazlDMeI170QS9yPWyH7HR4mdr" 
 COLOR_CORPORATIVO = "#1E3A8A"
 # ==========================================
@@ -55,7 +46,7 @@ def cargar_desde_drive(file_id, tipo, cache_buster):
             url = f'https://drive.google.com/uc?id={file_id}&v={cache_buster}'
             return pd.read_csv(url, sep=None, engine='python') 
     except Exception as e:
-        st.error(f"Error {tipo}: {e}")
+        st.error(f"Error cargando {tipo}: {e}")
         return None
 
 # --- NORMALIZACIÓN ---
@@ -81,7 +72,7 @@ def calcular_score(otd, tasa_inc):
     
     return (score / 4) * 10
 
-# --- SIDEBAR (CON BOTÓN GENERADOR) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2830/2830312.png", width=50)
     st.title("Control de Mando")
@@ -104,94 +95,48 @@ with st.sidebar:
     coste_gestion = st.number_input("Coste Gestión Incidencia (€)", value=25, step=5)
     coste_perdida = st.number_input("Pérdida por Cliente Crítico (€)", value=500, step=50)
 
-    # --- AQUÍ ESTÁ EL NUEVO BOTÓN GENERADOR ---
-    st.divider()
-    st.markdown("### 🛠️ Herramientas Admin")
-    
-    if st.button("📥 Generar Excel Festivos (2020-2025)"):
-        with st.spinner("Generando base de datos masiva..."):
-            import holidays
-            
-            years = [2020, 2021, 2022, 2023, 2024, 2025]
-            mapa_cp_comunidades = {
-                'AN': ['04', '11', '14', '18', '21', '23', '29', '41'], # Andalucía
-                'AR': ['22', '44', '50'], # Aragón
-                'AS': ['33'], # Asturias
-                'CB': ['39'], # Cantabria
-                'CE': ['51'], # Ceuta
-                'CL': ['05', '09', '24', '34', '37', '40', '42', '47', '49'], # Castilla y León
-                'CM': ['02', '13', '16', '19', '45'], # Castilla-La Mancha
-                'CN': ['35', '38'], # Canarias
-                'CT': ['08', '17', '25', '43'], # Cataluña
-                'EX': ['06', '10'], # Extremadura
-                'GA': ['15', '27', '32', '36'], # Galicia
-                'IB': ['07'], # Baleares
-                'MC': ['30'], # Murcia
-                'MD': ['28'], # Madrid
-                'ML': ['52'], # Melilla
-                'NC': ['31'], # Navarra
-                'PV': ['01', '20', '48'], # País Vasco
-                'RI': ['26'], # La Rioja
-                'VC': ['03', '12', '46']  # C. Valenciana
-            }
-            
-            data_festivos = []
-            
-            for year in years:
-                for comunidad, prefijos in mapa_cp_comunidades.items():
-                    festivos_comunidad = holidays.ES(years=year, subdiv=comunidad)
-                    for fecha, nombre in festivos_comunidad.items():
-                        fecha_str = fecha.strftime('%Y-%m-%d')
-                        for prefijo in prefijos:
-                            cp_generico = f"{prefijo}xxx" 
-                            data_festivos.append({
-                                'CP': cp_generico,
-                                'Fecha': fecha_str,
-                                'Descripción': f"{nombre}"
-                            })
-            
-            df_gen = pd.DataFrame(data_festivos)
-            df_gen = df_gen.drop_duplicates(subset=['CP', 'Fecha'])
-            df_gen = df_gen.sort_values(by=['Fecha', 'CP'])
-            
-            buffer_excel = io.BytesIO()
-            with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
-                df_gen.to_excel(writer, index=False)
-            
-            st.success(f"¡Listo! {len(df_gen)} festivos encontrados.")
-            st.download_button(
-                label="⬇️ DESCARGAR ARCHIVO AHORA",
-                data=buffer_excel.getvalue(),
-                file_name="festivos_espana_completo_2020_2025.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-
 # --- LÓGICA DE NEGOCIO ---
 df = cargar_desde_drive(ID_EXPEDICIONES, "sheet", st.session_state['last_update'])
+# Volvemos a cargarlo como CSV/Sheet que es como funcionaba tu archivo original
 df_locales = cargar_desde_drive(ID_FESTIVOS, "csv", st.session_state['last_update'])
 
 if df is None: st.stop()
 
-# Festivos Locales (Desde Excel)
+# Procesar Festivos Locales (Desde tu Excel)
 dic_festivos = {}
 dic_parciales = {}
+
 if df_locales is not None:
     try:
         df_locales.columns = df_locales.columns.str.strip()
         c_fecha = next((c for c in df_locales.columns if 'fecha' in c.lower()), None)
-        c_cp = next((c for c in df_locales.columns if 'cp' in c.lower()), None)
+        c_cp = next((c for c in df_locales.columns if 'cp' in c.lower() or 'codigo' in c.lower()), None)
+        
         if c_fecha and c_cp:
             df_locales[c_fecha] = pd.to_datetime(df_locales[c_fecha], dayfirst=True, errors='coerce')
             for _, row in df_locales.iterrows():
                 if pd.isnull(row[c_fecha]): continue
                 f_str = row[c_fecha].strftime('%Y-%m-%d')
-                cp_str = str(row[c_cp]).split('.')[0].strip()
-                if 'xx' in cp_str.lower(): dic_parciales[cp_str.lower().replace('xx','')] = [f_str]
-                else: dic_festivos[cp_str.zfill(5)] = [f_str]
-    except: pass
+                
+                # Limpieza robusta del CP del Excel
+                val_cp = str(row[c_cp]).lower().strip().replace('.0', '')
+                
+                # Caso comodín "28xxx"
+                if 'x' in val_cp:
+                    prefijo = val_cp.replace('x', '').strip()
+                    if prefijo:
+                        if prefijo not in dic_parciales: dic_parciales[prefijo] = []
+                        dic_parciales[prefijo].append(f_str)
+                # Caso CP exacto "28001"
+                else:
+                    cp_limpio = val_cp.zfill(5)
+                    if cp_limpio not in dic_festivos: dic_festivos[cp_limpio] = []
+                    dic_festivos[cp_limpio].append(f_str)
+    except Exception as e: 
+        st.error(f"Error procesando festivos locales: {e}")
 
 # --- FESTIVOS NACIONALES (2020-2025) ---
+# Incluidos en código para asegurar compatibilidad histórica sin depender del Excel
 festivos_nac = [
     # 2020
     '2020-01-01', '2020-01-06', '2020-04-10', '2020-05-01', '2020-08-15', '2020-10-12', '2020-11-01', '2020-12-06', '2020-12-08', '2020-12-25',
@@ -207,7 +152,7 @@ festivos_nac = [
     '2025-01-01', '2025-01-06', '2025-04-18', '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01', '2025-12-06', '2025-12-08', '2025-12-25'
 ]
 
-# Limpieza inicial
+# Limpieza inicial Expediciones
 df.columns = df.columns.str.strip()
 cols_req = ['Fecha', 'Fecha Estado', 'CP Dest.', 'Artículo']
 if not all(c in df.columns for c in cols_req):
@@ -242,12 +187,21 @@ def calcular_retraso(row):
     inicio = row['Fecha']
     fin = row['Fecha Estado']
     servicio = str(row['Artículo']).upper()
-    cp = str(row['CP Dest.']).strip().split('.')[0].zfill(5)
+    
+    # Limpieza CP Destino (Robusta: quita decimales y rellena ceros)
+    cp_raw = str(row['CP Dest.']).replace('.0', '').strip()
+    cp = cp_raw.zfill(5)
     
     holidays = festivos_nac.copy()
-    if cp in dic_festivos: holidays.extend(dic_festivos[cp])
-    for p, fs in dic_parciales.items():
-        if cp.startswith(p): holidays.extend(fs)
+    
+    # 1. Buscar festivo exacto (ej: 28001)
+    if cp in dic_festivos: 
+        holidays.extend(dic_festivos[cp])
+    
+    # 2. Buscar festivo parcial (ej: 28xxx)
+    for prefijo, fechas_parciales in dic_parciales.items():
+        if cp.startswith(prefijo):
+            holidays.extend(fechas_parciales)
         
     try:
         dias = np.busday_count(inicio.date(), fin.date(), weekmask='1111100', holidays=np.array(holidays, dtype='datetime64[D]'))
@@ -385,7 +339,7 @@ with tab1:
         fig_line.update_layout(height=200, margin=dict(t=10, b=10))
         st.plotly_chart(fig_line, use_container_width=True)
 
-# === TAB 2: ANÁLISIS (PARETO RE-INSERTADO Y CORREGIDO CP 5 DÍGITOS) ===
+# === TAB 2: ANÁLISIS (PARETO CP 5 DÍGITOS) ===
 with tab2:
     if not df_inc.empty:
         col_pareto, col_mapa = st.columns(2)
@@ -451,7 +405,6 @@ with tab2:
             
             # Interpretación Automática
             cps_80 = (porcentaje_acum <= 80).sum()
-            total_cps = len(incidencias_cp)
             st.info(f"📊 **Interpretación:** **{cps_80}** códigos postales generan el **80%** de las incidencias mostradas.")
             
         with col_mapa:
